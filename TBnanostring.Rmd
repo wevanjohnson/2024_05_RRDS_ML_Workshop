@@ -1,0 +1,97 @@
+---
+title: "TB Nanostring Analysis"
+author: "W. Evan Johnson"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+    toc_float: true
+    theme: "flatly"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
+library(caret)
+library(tidyverse)
+library(kernlab)
+```
+
+## Additional practice: TB Nanostring Analysis
+
+The `TBnanostring.rds` dataset contains gene expression measurements in the blood for 107 TB-related genes for 179 patients with either active tuberculosis infection (TB) or latent TB infection (LTBI) from one of [Dr. Johnson's publications](https://pubmed.ncbi.nlm.nih.gov/35015839/). When you Load these data into R ( `TBnanostring <- readRDS("TBnanostring.rds")`) the TB status is found in the first column of the data frame, followed by the genes in the subsequent columns. The rows represent each individual patient. 
+
+Here is a UMAP clustering of the dataset, and plot the result using `ggplot`. The points are colored based on TB status.
+
+```{r, echo=F}
+TBnanostring <- readRDS("TBnanostring.rds")
+
+set.seed(0)
+library(umap)
+umap_out <- umap(TBnanostring[,-1])
+umap_reduction <- as.data.frame(umap_out$layout)
+umap_reduction$Class <- as.factor(TBnanostring$TB_Status)
+
+umap_reduction %>% ggplot(aes(x=V1, y=V2, color=Class)) + 
+    geom_point() + xlab("UMAP 1") + ylab("UMAP 2") + 
+    theme(plot.title = element_text(hjust = 0.5)) + ggtitle("UMAP Plot")
+```
+
+Now, using the `caret::train()` function, apply the following machine learning methods to make a predictive biomarker to distinguish between the TB and control samples, use the `caret` package and cross validation to find the "finalModel" parameters to for each method. Provide any relevant/informative plots with your results. 
+
+1. Split the dataset into "training" and "testing" sets using a 70/30 partition (use `set.seed(0)` and the `caret::createDataPartition`).
+
+```{r}
+set.seed(0)
+training_indexs <- createDataPartition(TBnanostring$TB_Status, p = .7, list = F)
+training <- TBnanostring[training_indexs, ]
+testing  <- TBnanostring[-training_indexs, ]
+```
+
+2. Apply a Support Vector Machine to these data (try linear, radial, and polynomial kernels).
+
+```{r}
+svm_linear <- train(TB_Status ~ . , data=training, method = "svmLinear")
+svm_linear$finalModel
+svm_radial <- train(TB_Status ~ . , data=training, method = "svmRadial")
+svm_radial$finalModel
+svm_poly <- train(TB_Status ~ . , data=training, method = "svmPoly")
+svm_poly$finalModel
+```
+
+3. Apply a Random Forest Model to these data.
+
+```{r}
+rf <- train(TB_Status ~ ., data=training, method ="rf")
+rf$finalModel
+```
+
+4. Apply a Feedforward Perceptron Neural Network to these data.
+
+```{r}
+nn <- train(TB_Status ~ ., data=training, method ="nnet", trace=F)
+nn$finalModel
+```
+
+
+5. Compare the overall accuracy of the prediction methods for each of the machine learning tools in the previous problem. Which one performs the best?  
+
+```{r}
+ps <- predict(svm_linear, testing); svm_linear_accuracy <- confusionMatrix(ps, testing$TB_Status)$overall["Accuracy"]
+ps <- predict(svm_radial, testing); svm_radial_accuracy <- confusionMatrix(ps, testing$TB_Status)$overall["Accuracy"]
+ps <- predict(svm_poly, testing); svm_poly_accuracy <- confusionMatrix(ps, testing$TB_Status)$overall["Accuracy"]
+ps <- predict(rf, testing); rf_accuracy <- confusionMatrix(ps, testing$TB_Status)$overall["Accuracy"]
+ps <- predict(nn, testing); nn_accuracy <- confusionMatrix(ps, testing$TB_Status)$overall["Accuracy"]
+
+c(SVM_LIN = svm_linear_accuracy, SVM_RAD = svm_radial_accuracy, SVM_POLY=svm_poly_accuracy, RF = rf_accuracy, NNet = nn_accuracy)
+```
+
+
+## Session Info
+```{r session}
+sessionInfo()
+```
+
+

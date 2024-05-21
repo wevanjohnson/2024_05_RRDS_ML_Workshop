@@ -1,0 +1,445 @@
+---
+title: "Machine Learning Examples in R"
+author: W. Evan Johnson
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: show
+    toc: true
+    toc_float: true
+    theme: "flatly"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
+library(caret)
+library(e1071)
+library(randomForest)
+library(neuralnet)
+library(tidyverse)
+library(DT)
+library(gridExtra)
+library(dslabs)
+```
+
+## Introduction to Machine Learning
+Below is the code for the following modules: 
+
+1. Data management and model training tools
+2. Support Vector Machines
+3. Decision Trees and Random Forests
+4. Neural Networks
+5. Additional Practice
+
+## Using the `caret` package {.tabset}
+The `caret` package in R has several useful functions for building and assessing machine learning methods. It tries to consolidate many machine learning tools to provide a consistent syntax. 
+
+### Using the height data
+For a first example, we use the height data in dslabs:
+```{r}
+library(dslabs)
+data(heights)
+datatable(heights)
+boxplot(heights$height ~ heights$sex)
+```
+
+### Partition dataset
+The `caret` package includes the function `createDataPartition` that helps us generates indexes for randomly splitting the data into training and test sets: 
+
+```{r}
+set.seed(2007)
+test_index <- createDataPartition(heights$sex, times = 1, 
+                                  p = 0.5, list = FALSE)
+test_set <- heights[test_index, ]
+train_set <- heights[-test_index, ]
+```
+
+The argument `times` is used to define how many random samples of indexes to return, `p` is used to define what proportion of the data is represented by the index, and `list` is used to decide if we want the indexes returned as a list or not.
+
+### Simple predictor
+Exploratory data analysis suggests we can because, on average, males are slightly taller than females:
+
+```{r}
+heights %>% group_by(sex) %>% 
+  summarize(mean(height), sd(height))
+```
+
+Let's try predicting with a simple approach: predict `Male` if height is within two standard deviations from the average male. The overall accuracy is 0.78 in the test set:
+
+```{r}
+pred_test <- ifelse(test_set$height > 62, "Male", "Female") %>% 
+  factor(levels = levels(test_set$sex))
+confusionMatrix(pred_test, test_set$sex)
+```
+
+### Use the `train` function
+The `caret` package currently includes 237+ different machine learning methods, which can be applied using the `train` function. These are summarized in the [`caret` package manual](https://topepo.github.io/caret/available-models.html). 
+
+Keep in mind that `caret` does not include the needed packages and, to
+implement a package through `caret`, you still need to install the library. For example: 
+
+```{r}
+height_glm <- train(sex ~ height, method = "glm", data=train_set)
+confusionMatrix(predict(height_glm, test_set), 
+                test_set$sex)
+
+```
+
+
+## SVMs (Linear) {.tabset}
+
+### Generate dataset
+First generate some data in 2 dimensions, and make them a little separated:
+
+```{r}
+set.seed(10111)
+x = matrix(rnorm(40), 20, 2)
+y = rep(c(-1, 1), c(10, 10))
+x[y == 1,] = x[y == 1,] + 1
+plot(x, col = y + 3, pch = 19)
+```
+
+### Apply SVM
+We will use the **e1071** package which contains the `svm` function that works on the dataframe ($y$ needs to be a factor variable). Printing the svmfit gives its summary. 
+ 
+
+```{r}
+dat = data.frame(x, y = as.factor(y))
+svmfit = svm(y ~ ., data = dat, kernel = "linear", cost = 10, scale = FALSE)
+print(svmfit)
+```
+
+You can see that the number of support vectors is 6 - they are the points that are close to the boundary or on the wrong side of the boundary.
+
+### Plot SVM (version 1)
+There's a generic plot function for SVM that shows the decision boundary, as you can see below. It doesn't seem there's much control over the colors. It breaks with convention since it puts x2 on the horizontal axis and x1 on the vertical axis.
+
+```{r}
+plot(svmfit, dat)
+```
+
+### Plot SVM (version 2)
+Or plotting it more cleanly:
+```{r,include=T,echo=T}
+make.grid = function(x, n = 75) {
+  grange = apply(x, 2, range)
+  x1 = seq(from = grange[1,1], to = grange[2,1], length = n)
+  x2 = seq(from = grange[1,2], to = grange[2,2], length = n)
+  expand.grid(X1 = x1, X2 = x2)
+}
+xgrid = make.grid(x)
+```
+
+```{r}
+ygrid = predict(svmfit, xgrid)
+plot(xgrid, col = c("red","blue")[as.numeric(ygrid)], pch = 20, cex = .2)
+points(x, col = y + 3, pch = 19)
+points(x[svmfit$index,], pch = 5, cex = 2)
+```
+
+
+Unfortunately, the svm function is not too friendly, in that you have to do some work to get back the linear coefficients. The reason is probably that this only makes sense for linear kernels, and the function is more general. So let's use a formula to extract the coefficients more efficiently. You extract $\beta$ and $\beta_0$, which are the linear coefficients.
+
+
+```{r}
+beta = drop(t(svmfit$coefs)%*%x[svmfit$index,])
+beta0 = svmfit$rho
+```
+
+
+Now you can replot the points on the grid, then put the points back in (including the support vector points). Then you can use the coefficients to draw the decision boundary using a simple equation of the form:
+
+$$\beta_0+x_1\beta_1+x_2\beta_2=0$$
+
+Now plotting the lines on the graph:
+```{r}
+plot(xgrid, col = c("red", "blue")[as.numeric(ygrid)], pch = 20, cex = .2)
+points(x, col = y + 3, pch = 19)
+points(x[svmfit$index,], pch = 5, cex = 2)
+abline(beta0 / beta[2], -beta[1] / beta[2])
+abline((beta0 - 1) / beta[2], -beta[1] / beta[2], lty = 2)
+abline((beta0 + 1) / beta[2], -beta[1] / beta[2], lty = 2)
+```
+
+
+## SVMs (Non-linear){.tabset}
+
+### Example 1 (polynomial kernel) {.tabset}
+
+#### Apply polynomial SVM
+Now let's apply a non-linear (polynomial) SVM to our prior simulated dataset. 
+
+```{r}
+dat = data.frame(x, y = as.factor(y))
+svmfit = svm(y ~ ., data = dat, 
+             kernel = "polynomial", cost = 10, scale = FALSE)
+print(svmfit)
+```
+
+#### Plot results
+
+Plotting the result:
+```{r, echo=F}
+ygrid = predict(svmfit, xgrid)
+plot(xgrid, col = c("red","blue")[as.numeric(ygrid)], pch = 20, cex = .2)
+points(x, col = y + 3, pch = 19)
+points(x[svmfit$index,], pch = 5, cex = 2)
+```
+
+### Example 2 (radial basis kernel) {.tabset}
+
+#### Load data
+Here is a more complex example from _Elements of Statistical Learning_, where the decision boundary needs to be non-linear and there is no clear separation. 
+```{r}
+#download.file(
+#  "http://www-stat.stanford.edu/~tibs/ElemStatLearn/datasets/ESL.mixture.rda", 
+#  destfile='ESL.mixture.rda')
+rm(x,y)
+load(file = "ESL.mixture.rda")
+attach(ESL.mixture)
+names(ESL.mixture)
+```
+
+#### Plotting the data:
+```{r}
+plot(x, col = y + 1)
+```
+
+
+#### Apply SVM (radial basis kernel)
+Now make a data frame with the response $y$, and turn that into a factor. We will fit an SVM with radial kernel.
+```{r}
+dat = data.frame(y = factor(y), x)
+fit = svm(factor(y) ~ ., data = dat, scale = FALSE, 
+          kernel = "radial", cost = 5)
+print(fit)
+```
+
+
+#### Plotting the result
+It's time to create a grid and  predictions. We use `expand.grid` to create the grid, predict each of the values on the grid, and plot them:
+```{r}
+xgrid = expand.grid(X1 = px1, X2 = px2)
+ygrid = predict(fit, xgrid)
+plot(xgrid, col = as.numeric(ygrid), pch = 20, cex = .2)
+points(x, col = y + 1, pch = 19)
+```
+
+Plotting with a contour:
+```{r, echo=F}
+func = predict(fit, xgrid, decision.values = TRUE)
+func = attributes(func)$decision
+
+xgrid = expand.grid(X1 = px1, X2 = px2)
+ygrid = predict(fit, xgrid)
+plot(xgrid, col = as.numeric(ygrid), pch = 20, cex = .2)
+points(x, col = y + 1, pch = 19)
+
+contour(px1, px2, matrix(func, 69, 99), level = 0, add = TRUE, lwd=2)
+#contour(px1, px2, matrix(func, 69, 99), level = 0.5, add = TRUE, col = "blue", lwd = 2)
+```
+
+## Decision Trees {.tabset}
+### Olive oil
+We will use a new dataset that includes the breakdown of the composition of olive oil into 8 fatty acids:
+```{r}
+data("olive")
+olive <- select(olive, -area) #remove the `area` column--don't use it
+olive %>% datatable()
+```
+
+We will try to predict the region using the fatty acid composition values as predictors.
+
+```{r}
+table(olive$region)
+```
+
+### Boxplots
+A bit of data exploration reveals that we should be able to do even better: note that eicosenoic is only in Southern Italy and linoleic separates Northern Italy from Sardinia.
+
+```{r olive-eda}
+olive %>% gather(fatty_acid, percentage, -region) %>%
+  ggplot(aes(region, percentage, fill = region)) +
+  geom_boxplot() +
+  facet_wrap(~fatty_acid, scales = "free", ncol = 4) +
+  theme(axis.text.x = element_blank(), legend.position="bottom")
+```
+
+### Paritions
+This implies that we should be able to build an algorithm that predicts perfectly! Let's try plotting the values for eicosenoic and linoleic.
+
+```{r olive-two-predictors}
+olive %>% 
+  ggplot(aes(eicosenoic, linoleic, color = region)) + 
+  geom_point(size=2) +
+  geom_vline(xintercept = 0.065, lty = 2) + 
+  geom_segment(x = -0.2, y = 10.54, xend = 0.065, yend = 10.54, 
+               color = "black", lty = 2)
+```
+
+### Decision tree
+Let's define a **decision rule**: If eicosenoic is larger than 0.065, predict Southern Italy. If not, then if linoleic is larger than $10.535$, predict Sardinia, otherwise predict Northern Italy. We can draw this decision tree:
+
+```{r olive-tree, warning=FALSE, message=FALSE}
+train_rpart <- train(region ~ ., method = "rpart", data = olive)
+plot(train_rpart$finalModel, margin = 0.1)
+text(train_rpart$finalModel, cex = 0.75)
+```
+
+## Random Forests {.tabset}
+### Summarize data
+For this example we will use the Iris data in R
+```{r}
+datatable(iris)
+iris %>% ggplot(aes(Petal.Width, Petal.Length, color = Species)) +
+  geom_point()
+```
+
+### Select train/test
+```{r}
+set.seed(0)
+test_index <- createDataPartition(iris$Species, times = 1, 
+                                  p = 0.3, list = FALSE)
+iris_test <- iris[test_index, ]
+iris_train <- iris[-test_index, ]
+```
+
+### Apply Random Forest
+```{r}
+iris_classifier <- randomForest(Species~., data = iris_train, 
+                    importance=T)
+iris_classifier
+```
+
+### Results summary
+```{r}
+plot(iris_classifier)
+importance(iris_classifier)
+varImpPlot(iris_classifier)
+```
+
+### Predictions
+```{r}
+predicted_table <- predict(iris_classifier, iris_test[,-5])
+confusionMatrix(predicted_table, iris_test[,5])
+```
+
+## Neural Networks {.tabset}
+
+### Example 1: Job Placement {.tabset}
+
+#### Placement data (toy example)
+Suppose we have students' technical knowledge (TKS), communication skill score (CSS), and placement status (Placed):
+
+```{r}
+TKS=c(20,10,30,20,80,30)
+CSS=c(90,20,40,50,50,80)
+Placed=c(1,0,0,0,1,1)
+df=data.frame(TKS,CSS,Placed)
+datatable(df)
+```
+
+
+#### Fit Neural Network
+Fit the multilayer perceptron neural network:
+```{r, eval=T}
+set.seed(0)
+nn=neuralnet::neuralnet(Placed~TKS+CSS,data=df, hidden=3,
+             act.fct = "logistic", linear.output = FALSE)
+names(nn)
+```                
+
+#### Plot Neural Network
+We can plot or neural network:
+```{r, eval=T}
+plot(nn, rep="best")
+```
+
+#### Predictions
+Creating a test set:
+```{r, eval=T}
+TKS=c(30,40,85)
+CSS=c(85,50,40)
+test=data.frame(TKS,CSS)
+datatable(test)
+
+pred_nn = neuralnet::compute(nn,test)$net.result
+pred_class <- ifelse(pred_nn>0.45, 1, 0)
+pred_class
+```
+
+
+### Example 2: Iris data {.tabset}
+
+#### NN on Iris data
+Now, using the `iris` dataset: 
+```{r}
+set.seed(0)
+nn_iris <- neuralnet(Species ~ ., data=iris, hidden=3)
+nn_iris
+```
+
+
+#### Plot for Iris NN
+Plotting the Neural Network:  
+```{r}
+plot(nn_iris, rep="best")
+```
+
+
+#### NN on Iris data using `caret`
+
+Now, doing the same thing using `caret`:
+```{r}
+set.seed(0)
+nn_caret <- caret::train(Species~., data = iris, 
+                         method = "nnet", linout = TRUE, 
+                         trace = FALSE)
+ps <- predict(nn_caret, iris)
+confusionMatrix(ps, iris$Species)$overall["Accuracy"]
+```
+
+#### Plot `caret` NN
+Plotting the `caret' neural network:
+```{r, }
+NeuralNetTools::plotnet(nn_caret)  
+```
+
+## Additional practice
+
+The `TBnanostring.rds` dataset contains gene expression measurements in the blood for 107 TB-related genes for 179 patients with either active tuberculosis infection (TB) or latent TB infection (LTBI) from one of [Dr. Johnson's publications](https://pubmed.ncbi.nlm.nih.gov/35015839/). When you Load these data into R ( `TBnanostring <- readRDS("TBnanostring.rds")`) the TB status is found in the first column of the data frame, followed by the genes in the subsequent columns. The rows represent each individual patient. 
+
+Here is a UMAP clustering of the dataset, and plot the result using `ggplot`. The points are colored based on TB status.
+
+```{r, echo=F}
+TBnanostring <- readRDS("TBnanostring.rds")
+
+set.seed(0)
+library(umap)
+umap_out <- umap(TBnanostring[,-1])
+umap_reduction <- as.data.frame(umap_out$layout)
+umap_reduction$Class <- as.factor(TBnanostring$TB_Status)
+
+umap_reduction %>% ggplot(aes(x=V1, y=V2, color=Class)) + 
+    geom_point() + xlab("UMAP 1") + ylab("UMAP 2") + 
+    theme(plot.title = element_text(hjust = 0.5)) + ggtitle("UMAP Plot")
+```
+
+Split the dataset into "training" and "testing" sets using a 70/30 partition, using `set.seed(0)` and the `createDataPartition` function from the caret `package` (code is 'hiding' in the .Rmd file!). Apply the following machine learning methods to make a predictive biomarker to distinguish between the TB and control samples, use the `caret` package and cross validation to find the "finalModel" parameters to for each method.
+
+Now, using the `caret::train()` function, apply the following machine learning methods to make a predictive biomarker to distinguish between the TB and control samples, use the `caret` package and cross validation to find the "finalModel" parameters to for each method. Provide any relevant/informative plots with your results. 
+
+1. Split the dataset into "training" and "testing" sets using a 70/30 partition (use `set.seed(0)` and the `caret::createDataPartition`).
+2. Apply a Support Vector Machine to these data (try linear, radial, and polynomial kernels).
+3. Apply a Random Forest Model to these data.
+4. Apply a Feedforward Perceptron Neural Network to these data.
+5. Compare the overall accuracy of the prediction methods for each of the machine learning tools in the previous problem. Which one performs the best?  
+
+(Note: the `TBnanostring.Rmd` and `TBnanostring.html` files provide suggested solutions for these analyses)
+
+## Session Info
+```{r session}
+sessionInfo()
+```
