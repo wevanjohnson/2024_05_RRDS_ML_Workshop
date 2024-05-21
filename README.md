@@ -7,7 +7,7 @@ These are the materials for our Kernel Machine learning workshop at the Red Rock
     + Machine Learning is __NOT__ a spectator sport! You need to practice the skills you learn over and over again!
 * Communication: if you have questions or concerns, please email me: <w.evan.johnson@rutgers.edu>
 * GitHub materials for the course:
-    + All materials for this course will be posted on the course GitHub page: [https://github.com/wevanjohnson/2024_05_RRDS_ML_Workshop/edit/main/README.md)](https://github.com/wevanjohnson/2024_05_RRDS_ML_Workshop/edit/main/README.md)
+    + All materials for this course will be posted on the course GitHub page: [https://github.com/wevanjohnson/2024_05_RRDS_ML_Workshop/edit/main/README.md](https://github.com/wevanjohnson/2024_05_RRDS_ML_Workshop/edit/main/README.md)
     + You obviously have this since you are here!
 * Schedule:
 
